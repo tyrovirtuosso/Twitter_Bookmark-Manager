@@ -1,4 +1,3 @@
-from token_manager import Token_Manager
 import requests
 from pprint import pprint
 import pandas as pd
@@ -8,6 +7,13 @@ import logging
 
 logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 
+from token_manager import Token_Manager
+from mongo_db import MongoDB
+import pymongo
+
+
+db_name = 'Twitter'
+collection_name = 'bookmarks'
 
 class Bookmarks_Manager():
     def __init__(self):
@@ -17,6 +23,7 @@ class Bookmarks_Manager():
         It does this by creating an instance of Token_Manager() to get an updated authentication token and user ID.
         """
         tm = Token_Manager()
+        self.mongo = MongoDB()
         # Unless refreshed, token only lasts for 2hrs
         self.token = tm.refresh_token()
         self.user_id = tm.get_userid(self.token)
@@ -77,8 +84,11 @@ class Bookmarks_Manager():
                 logging.info(f"Finished Fetching bookmarks!")
                 break  # If there are no more bookmarks, break the loop
             
+            
+            
             bookmark = self.process_bookmark_dict(response.json())
             bookmarks.append(bookmark)
+                                    
             
             if "next_token" in response_data.get("meta", {}):  # If there are more pages, get the next page
                 pagination_token = response_data.get("meta", {}).get("next_token")
@@ -170,8 +180,39 @@ class Bookmarks_Manager():
 
         df = pd.DataFrame(tweets)        
         return df
-
+    
+    def get_db(self):        
+        if not self.mongo.check_db(db_name):
+            db = self.mongo.client[db_name]
+            return db
+        db = self.mongo.client[db_name]
+        return db
         
+    def get_collection(self, db):        
+        if not self.mongo.check_collection(db, collection_name):            
+            collection = db.create_collection(collection_name)
+            collection.create_index("url", unique=True)
+            return collection
+        collection = db[collection_name]
+        collection.create_index("url", unique=True)
+        return collection
+    
+    def save_to_mongodb(self, bookmark):
+        db = self.get_db()
+        collection = self.get_collection(db)                                
+            
+        data = bookmark.to_dict('records')
+        try:
+            collection.insert_many(data, ordered=False, bypass_document_validation=True) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
+            print("Data added to MongoDB successfully.")
+            
+        except pymongo.errors.BulkWriteError as e:
+            write_errors = e.details.get('writeErrors', [])
+            num_of_duplicates = len(write_errors)
+            print(f"{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
+        
+
+
 def send_request(method, url, headers=None, params=None, json=None):
     """
     Sends an HTTP request to a website using the specified method, url, headers, params, and/or JSON data.
@@ -190,7 +231,6 @@ def send_request(method, url, headers=None, params=None, json=None):
     - None.
     """
 
-
     req = requests.Request(method, url, headers=headers, params=params, json=json)
     prepped = req.prepare()
     return requests.Session().send(prepped)
@@ -199,4 +239,5 @@ def send_request(method, url, headers=None, params=None, json=None):
 bm = Bookmarks_Manager()
 bookmarks = bm.get_all_bookmarks(user_fields=["username"], tweet_fields=["author_id","created_at","public_metrics"], expansions=["author_id"], limit=100)
 all_bookmarks = pd.concat(bookmarks, ignore_index=True)
+bm.save_to_mongodb(all_bookmarks)
 all_bookmarks.to_csv("bookmarks.csv", index=True)
