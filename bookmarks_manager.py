@@ -12,9 +12,6 @@ from mongo_db import MongoDB
 import pymongo
 
 
-db_name = 'Twitter'
-collection_name = 'bookmarks'
-
 class Bookmarks_Manager():
     def __init__(self):
         """
@@ -27,6 +24,8 @@ class Bookmarks_Manager():
         # Unless refreshed, token only lasts for 2hrs
         self.token = tm.refresh_token()
         self.user_id = tm.get_userid(self.token)
+        self.db_name = 'Twitter'
+        self.collection_name = f'bookmarks_{self.user_id}'
     
     def get_all_bookmarks(self, user_fields=None, media_fields=None, tweet_fields=None, expansions=None, limit=None, pagination_token=None):
         """
@@ -182,18 +181,18 @@ class Bookmarks_Manager():
         return df
     
     def get_db(self):        
-        if not self.mongo.check_db(db_name):
-            db = self.mongo.client[db_name]
+        if not self.mongo.check_db(self.db_name):
+            db = self.mongo.client[self.db_name]
             return db
-        db = self.mongo.client[db_name]
+        db = self.mongo.client[self.db_name]
         return db
         
     def get_collection(self, db):        
-        if not self.mongo.check_collection(db, collection_name):            
-            collection = db.create_collection(collection_name)
+        if not self.mongo.check_collection(db, self.collection_name):            
+            collection = db.create_collection(self.collection_name)
             collection.create_index("url", unique=True)
             return collection
-        collection = db[collection_name]
+        collection = db[self.collection_name]
         collection.create_index("url", unique=True)
         return collection
     
@@ -204,7 +203,7 @@ class Bookmarks_Manager():
         data = bookmark.to_dict('records')
         try:
             collection.insert_many(data, ordered=False, bypass_document_validation=True) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
-            print("Data added to MongoDB successfully.")
+            print("Bookmarks added to MongoDB successfully.")
             
         except pymongo.errors.BulkWriteError as e:
             write_errors = e.details.get('writeErrors', [])
