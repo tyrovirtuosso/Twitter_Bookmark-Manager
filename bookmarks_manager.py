@@ -4,12 +4,15 @@ import pandas as pd
 from halo import Halo
 from termcolor import colored
 import logging
+import time
 
 logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 
 from token_manager import Token_Manager
 from mongo_db import MongoDB
 import pymongo
+from pymongo.errors import AutoReconnect
+
 
 
 class Bookmarks_Manager():
@@ -25,7 +28,8 @@ class Bookmarks_Manager():
         self.token = tm.refresh_token()
         self.user_id = tm.get_userid(self.token)
         self.db_name = 'Twitter'
-        self.collection_name = f'bookmarks_{self.user_id}'
+        self.collection_name = f'bookmarks_{self.user_id}'         
+        
     
     def get_all_bookmarks(self, user_fields=None, media_fields=None, tweet_fields=None, expansions=None, limit=None, pagination_token=None):
         """
@@ -61,12 +65,10 @@ class Bookmarks_Manager():
         """
         
         bookmarks = []
-        count = limit
+        count = limit        
         
         print("")
-        for i in range(1, 1000):  # Set upper bound to avoid infinite loop
-            spinner = Halo(text=f'Getting Bookmarks...', spinner='line')
-            spinner.start()
+        for i in range(1, 1000):  # Set upper bound to avoid infinite loop            
             response = self.get_bookmarks(user_fields=user_fields, media_fields=media_fields, tweet_fields=tweet_fields, expansions=expansions, limit=limit, pagination_token=pagination_token)
             response_data = response.json()
             print(f"Fetched total of {colored(count, 'green')} bookmarks")
@@ -77,9 +79,7 @@ class Bookmarks_Manager():
                 logging.error(f"Error retrieving bookmarks: {response_data['error']['message']}")
                 raise Exception(f"Error retrieving bookmarks: {response_data['error']['message']}")
 
-            if len(response_data["data"]) == 0:
-                spinner.stop()
-                print(f"Finished Fetching bookmarks!")
+            if len(response_data["data"]) == 0:                
                 logging.info(f"Finished Fetching bookmarks!")
                 break  # If there are no more bookmarks, break the loop
             
@@ -92,10 +92,8 @@ class Bookmarks_Manager():
             if "next_token" in response_data.get("meta", {}):  # If there are more pages, get the next page
                 pagination_token = response_data.get("meta", {}).get("next_token")
             else:
-                spinner.stop()
-                print(f"Finished Fetching bookmarks!")
                 break  # If there are no more pages, break the loop
-
+        
         return bookmarks
 
     
@@ -119,6 +117,8 @@ class Bookmarks_Manager():
         - None.
         """
         
+        start_time = time.time()        
+        
         url = f"https://api.twitter.com/2/users/{self.user_id}/bookmarks"
         params = {"max_results": limit}
         params.update({'user.fields': ','.join(user_fields)} if user_fields else {})
@@ -132,6 +132,9 @@ class Bookmarks_Manager():
         response = send_request('GET', url, headers=headers, params=params)
         
         # print(f"Requesting to {response.url}")
+        
+        total_time = time.time() - start_time
+        print(f'Time taken for getting {limit} bookmarks: {round(total_time,2)} seconds')
         return response
         
     
@@ -179,36 +182,32 @@ class Bookmarks_Manager():
 
         df = pd.DataFrame(tweets)        
         return df
-    
-    def get_db(self):        
-        if not self.mongo.check_db(self.db_name):
-            db = self.mongo.client[self.db_name]
-            return db
-        db = self.mongo.client[self.db_name]
-        return db
         
-    def get_collection(self, db):        
-        if not self.mongo.check_collection(db, self.collection_name):            
-            collection = db.create_collection(self.collection_name)
-            collection.create_index("url", unique=True)
-            return collection
-        collection = db[self.collection_name]
-        collection.create_index("url", unique=True)
-        return collection
+    
     
     def save_to_mongodb(self, bookmark):
-        db = self.get_db()
-        collection = self.get_collection(db)                                
+        # Test DB Connection
+        try:
+            self.mongo.client.admin.command('ping')
+            # print("Pinged your deployment. You successfully connected to MongoDB!")
+        except AutoReconnect as e:
+            print(f'An AutoReconnect exception occurred: {e}')
+            return False
+        
+        db = self.mongo.get_db(self.db_name)
+        collection = self.mongo.get_collection(db, self.collection_name)                                
             
         data = bookmark.to_dict('records')
         try:
-            collection.insert_many(data, ordered=False, bypass_document_validation=True) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
+            collection.insert_many(data, ordered=False) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
             print("Bookmarks added to MongoDB successfully.")
             
         except pymongo.errors.BulkWriteError as e:
             write_errors = e.details.get('writeErrors', [])
             num_of_duplicates = len(write_errors)
             print(f"{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
+        
+        return True
         
 
 
@@ -236,7 +235,21 @@ def send_request(method, url, headers=None, params=None, json=None):
         
         
 bm = Bookmarks_Manager()
+
+spinner = Halo(text=f'Getting Bookmarks...', spinner='line')
+spinner.start()
+start_time = time.time()     
 bookmarks = bm.get_all_bookmarks(user_fields=["username"], tweet_fields=["author_id","created_at","public_metrics"], expansions=["author_id"], limit=100)
+spinner.stop()
+total_time = time.time() - start_time
+print(f'Time taken for getting all bookmarks: {round(total_time,2)} seconds')
+
 all_bookmarks = pd.concat(bookmarks, ignore_index=True)
-bm.save_to_mongodb(all_bookmarks)
+
+start_time = time.time()     
+if bm.save_to_mongodb(all_bookmarks):
+    total_time = time.time() - start_time
+    print()
+    print(f"{colored('Successfully connected and saved data to MongoDB', 'blue')} in {round(total_time,2)} seconds")
+        
 all_bookmarks.to_csv("bookmarks.csv", index=True)
