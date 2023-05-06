@@ -249,10 +249,7 @@ def start():
     bm = Bookmarks_Manager()        
     bookmarks = fetch_bookmarks(bm)
     all_bookmarks = pd.concat(bookmarks, ignore_index=True)
-    saving_to_DB(bm, all_bookmarks)
-       
-    
-            
+    saving_to_DB(bm, all_bookmarks)      
     all_bookmarks.to_csv("bookmarks.csv", index=True)
     
 start()
