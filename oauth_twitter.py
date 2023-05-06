@@ -75,13 +75,10 @@ def callback():
             code_verifier=code_verifier,
             code=code,
         )
-        print(token)
         # Serialize the dictionary to a binary file
         with open("token.pickle", "wb") as f:
             pickle.dump(token, f)
 
-        st_token = '"{}"'.format(token)
-        j_token = json.loads(st_token)
         return redirect(url_for("welcome"))
     
     except Exception as e:

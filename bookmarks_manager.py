@@ -11,7 +11,6 @@ logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 from token_manager import Token_Manager
 from mongo_db import MongoDB
 import pymongo
-from pymongo.errors import AutoReconnect
 
 
 
@@ -186,14 +185,6 @@ class Bookmarks_Manager():
     
     
     def save_to_mongodb(self, bookmark):
-        # Test DB Connection
-        try:
-            self.mongo.client.admin.command('ping')
-            # print("Pinged your deployment. You successfully connected to MongoDB!")
-        except AutoReconnect as e:
-            print(f'An AutoReconnect exception occurred: {e}')
-            return False
-        
         db = self.mongo.get_db(self.db_name)
         collection = self.mongo.get_collection(db, self.collection_name)                                
             
@@ -205,7 +196,7 @@ class Bookmarks_Manager():
         except pymongo.errors.BulkWriteError as e:
             write_errors = e.details.get('writeErrors', [])
             num_of_duplicates = len(write_errors)
-            print(f"{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
+            print(f"\n{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
         
         return True
         
@@ -233,23 +224,35 @@ def send_request(method, url, headers=None, params=None, json=None):
     prepped = req.prepare()
     return requests.Session().send(prepped)
         
-        
-bm = Bookmarks_Manager()
 
-spinner = Halo(text=f'Getting Bookmarks...', spinner='line')
-spinner.start()
-start_time = time.time()     
-bookmarks = bm.get_all_bookmarks(user_fields=["username"], tweet_fields=["author_id","created_at","public_metrics"], expansions=["author_id"], limit=100)
-spinner.stop()
-total_time = time.time() - start_time
-print(f'Time taken for getting all bookmarks: {round(total_time,2)} seconds')
-
-all_bookmarks = pd.concat(bookmarks, ignore_index=True)
-
-start_time = time.time()     
-if bm.save_to_mongodb(all_bookmarks):
+def fetch_bookmarks(bm):
+    spinner = Halo(text=f'Getting Bookmarks...', spinner='line')
+    spinner.start()
+    start_time = time.time() 
+    bookmarks = bm.get_all_bookmarks(user_fields=["username"], tweet_fields=["author_id","created_at","public_metrics"], expansions=["author_id"], limit=100)
+    spinner.stop()
     total_time = time.time() - start_time
-    print()
-    print(f"{colored('Successfully connected and saved data to MongoDB', 'blue')} in {round(total_time,2)} seconds")
-        
-all_bookmarks.to_csv("bookmarks.csv", index=True)
+    print(f'Time taken for getting all bookmarks: {round(total_time,2)} seconds')
+    return bookmarks
+
+def saving_to_DB(bm, all_bookmarks):
+    spinner = Halo(text=f'Saving to MongoDB', spinner='line')
+    spinner.start()
+    start_time = time.time()  
+    if bm.save_to_mongodb(all_bookmarks):
+        total_time = time.time() - start_time
+        print()
+        spinner.stop()
+        print(f"{colored('Successfully connected and saved data to MongoDB', 'blue')} in {round(total_time,2)} seconds")
+
+def start():
+    bm = Bookmarks_Manager()        
+    bookmarks = fetch_bookmarks(bm)
+    all_bookmarks = pd.concat(bookmarks, ignore_index=True)
+    saving_to_DB(bm, all_bookmarks)
+       
+    
+            
+    all_bookmarks.to_csv("bookmarks.csv", index=True)
+    
+start()
