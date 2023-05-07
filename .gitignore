@@ -166,3 +166,8 @@ req.txt
 output.txt
 *.csv
 *.env
+
+draft_.py
+plott_copy.py
+plott_.py
+config.py
