@@ -66,7 +66,7 @@ class MongoDB():
     def fetch_from_collection(self, collection_name):
         db = self.get_db(db_name)
         collection = self.get_collection(db, collection_name)
-        data = collection.find().sort("start_date", pymongo.DESCENDING)
+        data = collection.find()
         df = pd.DataFrame(data)
         if db_name == 'Twitter':
             df['created_at'] = pd.to_datetime(df['created_at'])

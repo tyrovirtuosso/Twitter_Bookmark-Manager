@@ -12,10 +12,11 @@ import pandas as pd
 
 
 class Fetcher():
-    def __init__(self) -> None:
+    def __init__(self, token, user_id) -> None:
         self.tm = Token_Manager()
         self.mongo = MongoDB()
-        self.bookmarks = Bookmarks()
+        self.bookmarks = Bookmarks(token, user_id)
+
     
     @property
     def twitter_oath_token(self):
@@ -78,6 +79,10 @@ class Fetcher():
         
     def delete_bookmarks(self, user_ids):
         self.bookmarks.delete_bookmarks(user_ids)
+        
+    
+    def get_most_occured_usernames(self, data):
+        return data['username'].value_counts().head(10)
         
         
         

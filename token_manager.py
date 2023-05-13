@@ -4,9 +4,11 @@ import pandas as pd
 import json
 import pickle
 from pprint import pprint
-import oauth_twitter as main
 from dotenv import load_dotenv
 load_dotenv()
+
+import oauth_twitter as main
+from mongo_db import MongoDB
 
 
 class Token_Manager():
@@ -30,9 +32,28 @@ class Token_Manager():
         return self.user_id
 
     def get_token(self):
-        # Load the dictionary from the pickle file
-        with open("token.pickle", "rb") as f:
-            self.token = pickle.load(f)
+        # # Load the dictionary from the pickle file
+        # with open("token.pickle", "rb") as f:
+        #     self.token = pickle.load(f)
+        
+        # Get token from the user_tokens collection in Twitter MongoDB
+        # Initialize DB
+        mongo = MongoDB()
+        db = mongo.get_db('Twitter')
+        
+        # Get user_tokens collection
+        user_tokens_collection = mongo.get_collection(db, 'user_tokens') 
+        
+        # query the user_tokens collection for the specific user_id
+        user_token_doc = user_tokens_collection.find_one({"user_id": user_id})
+        # get the token from the document
+        if user_token_doc is not None:
+            token = user_token_doc['token']
+            print(f"Token for user ID {user_id} is: {token}")
+        else:
+            print(f"No token found for user ID {user_id}")
+            
+            
         return self.token
 
     def save_token(self, refreshed_token):

@@ -8,12 +8,14 @@ logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 from token_manager import Token_Manager
 
 class Bookmarks():
-    def __init__(self) -> None:
-        tm = Token_Manager()
+    def __init__(self, token, user_id) -> None:
+        self.token = token
+        self.user_id = user_id
+        # tm = Token_Manager()
                 
-        # Unless refreshed, token only lasts for 2hrs
-        self.token = tm.refresh_token()
-        self.user_id = tm.get_userid(self.token) 
+        # # Unless refreshed, token only lasts for 2hrs
+        # self.token = tm.refresh_token()
+        # self.user_id = tm.get_userid(self.token) 
     
     
     def get_all_bookmarks(self, user_fields=None, media_fields=None, tweet_fields=None, expansions=None, limit=None, pagination_token=None):
