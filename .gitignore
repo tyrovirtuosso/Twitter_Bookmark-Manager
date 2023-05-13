@@ -166,6 +166,7 @@ req.txt
 output.txt
 *.csv
 *.env
+.DS_Store
 
 draft_.py
 plott_copy.py
