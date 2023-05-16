@@ -6,14 +6,12 @@ from requests_oauthlib import OAuth2Session
 from fastapi import FastAPI, Request, status
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse, HTMLResponse
 import pickle
-import pprint
 import uvicorn
 import pymongo
-import time
 import urllib.parse
 
 
-from config import twitter_scopes
+from config import twitter_scopes, db_name
 from dotenv import load_dotenv
 from mongo_db import MongoDB
 from token_manager import Token_Manager
@@ -43,12 +41,11 @@ def make_token():
 def add_user_token(token):
     # Initialize DB
     mongo = MongoDB()
-    db = mongo.get_db('Twitter')
-    
+    db = mongo.get_db(db_name)
     
     # create user_tokens collection for adding tokens of users with user_id as index
     user_tokens_collection = mongo.get_collection(db, 'user_tokens') 
-    tm = Token_Manager()
+    tm = Token_Manager(token)
     user_id = tm.get_userid(token)        
     user_tokens_collection.create_index([('user_id', pymongo.ASCENDING)], unique=True)   
             
@@ -62,7 +59,7 @@ def add_user_token(token):
 #     token = request.cookies.get("token")
 #     token = urllib.parse.parse_qs(urllib.parse.unquote(token))
 #     token = {key: val[0] for key, val in token.items()}
-#     tm = Token_Manager()
+#     tm = Token_Manager(token)
 #     user_id = tm.get_userid(token)     
     
 #     fetcher = Fetcher(token, user_id)  
@@ -83,7 +80,7 @@ async def welcome(request: Request):
     token = request.cookies.get("token")
     token = urllib.parse.parse_qs(urllib.parse.unquote(token))
     token = {key: val[0] for key, val in token.items()}
-    tm = Token_Manager()
+    tm = Token_Manager(token)
     user_id = tm.get_userid(token)
     
     return f"""
@@ -129,7 +126,7 @@ async def fetch_bookmarks(request: Request):
     token = request.cookies.get("token")
     token = urllib.parse.parse_qs(urllib.parse.unquote(token))
     token = {key: val[0] for key, val in token.items()}
-    tm = Token_Manager()
+    tm = Token_Manager(token)
     user_id = tm.get_userid(token)     
     
     fetcher = Fetcher(token, user_id)  

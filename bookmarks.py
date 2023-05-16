@@ -5,8 +5,6 @@ from termcolor import colored
 import logging
 logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 
-from token_manager import Token_Manager
-
 class Bookmarks():
     def __init__(self, token, user_id) -> None:
         self.token = token
@@ -173,15 +171,14 @@ class Bookmarks():
         all_bookmarks = pd.concat(bookmarks, ignore_index=True)
         return all_bookmarks
     
-    def delete_bookmarks(self, user_ids):
-        for user_id in user_ids:            
-            url = f"https://api.twitter.com/2/users/{self.user_id}/bookmarks/{user_id}"
-            headers = {
-                "Authorization": f"Bearer {self.token['access_token']}",
-            }
-            response = send_request('DELETE', url, headers=headers)
-            # print(headers)
-            # print(f"Requesting to {response.url} and {response.headers}")            
+    def delete_bookmarks(self, tweet_id):
+        url = f"https://api.twitter.com/2/users/{self.user_id}/bookmarks/{tweet_id}"
+        headers = {
+            "Authorization": f"Bearer {self.token['access_token']}",
+        }
+        response = send_request('DELETE', url, headers=headers)
+        # print(headers)
+        # print(f"Requesting to {response.url} and {response.headers}")            
     
 def send_request(method, url, headers=None, params=None, json=None):
     """

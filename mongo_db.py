@@ -1,14 +1,11 @@
 from pymongo import MongoClient
 from pymongo.errors import AutoReconnect
-import os
 import pandas as pd
-import requests
+import pymongo
 from dotenv import load_dotenv
 load_dotenv()
 import logging
 logging.basicConfig(filename='mongo_db.log', level=logging.DEBUG)
-import pymongo
-
 
 from config import MONGO_CLOUD, MONGODB_CLUSTER_LOCAL, MONGODB_CLUSTER_CLOUD, db_name
 
@@ -20,9 +17,12 @@ class MongoDB():
         else: 
             cluster = MONGODB_CLUSTER_LOCAL
             self.client = MongoClient(cluster)
+        
+        self.db = self.get_db(db_name=db_name)
+                 
      
-    def check_collection(self, db_name, collection_name):
-        if collection_name in db_name.list_collection_names():
+    def check_collection(self, collection_name):
+        if collection_name in self.db.list_collection_names():
             return True
         
     def check_db(self, db_name:str):
@@ -56,35 +56,56 @@ class MongoDB():
             import sys
             sys.exit(1)
     
-    def get_collection(self, db, collection_name):        
-        if not self.check_collection(db, collection_name):            
-            collection = db.create_collection(collection_name)            
+    def get_collection(self, collection_name):        
+        if not self.check_collection(collection_name):            
+            collection = self.db.create_collection(collection_name)  
+            if 'bookmarks' in collection_name: 
+                print(f"Creating {collection_name} collection")
+                index_name = 'unique_id_url'
+                unique_index = [('id', pymongo.ASCENDING), ('url', pymongo.ASCENDING)]
+                collection.create_index(unique_index, unique=True, name=index_name)          
             return collection
-        collection = db[collection_name]
+        collection = self.db[collection_name]        
         return collection
     
     def fetch_from_collection(self, collection_name):
-        db = self.get_db(db_name)
-        collection = self.get_collection(db, collection_name)
-        data = collection.find()
+        collection = self.get_collection(collection_name)
+        data = list(collection.find())
         df = pd.DataFrame(data)
         if db_name == 'Twitter':
             df['created_at'] = pd.to_datetime(df['created_at'])
-            df = df.sort_values(by='created_at', ascending=False)
+            # df = df.sort_values(by='created_at', ascending=False)
         return df
 
     def save_to_collection(self, data, collection_name):
-        db = self.get_db(db_name)
-        collection = self.get_collection(db, collection_name)
+        collection = self.get_collection(collection_name)
         data = data.to_dict('records') 
-        try:
-            collection.insert_many(data, ordered=False) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
-            print("Bookmarks added to MongoDB successfully.")
-            
-        except pymongo.errors.BulkWriteError as e:
-            write_errors = e.details.get('writeErrors', [])
-            num_of_duplicates = len(write_errors)
-            print(f"\n{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
+        
+        if 'bookmarks' in collection_name:
+            try:
+                collection.insert_many(data, ordered=False) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
+                print("Bookmarks added to MongoDB successfully.")
+                
+            except pymongo.errors.BulkWriteError as e:
+                write_errors = e.details.get('writeErrors', [])
+                num_of_duplicates = len(write_errors)
+                print(f"\n{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
+        
+        # for url in collection.distinct('url'):
+        #     result = collection.delete_many({'url': url})  # remove all but the first document with the same url
+        #     print(f"Deleted {result.deleted_count - 1} duplicates for url '{url}'")
+        
+                        
+    def collection_item_count(self, collection_name):
+        collection = self.get_collection(collection_name)
+        total_count = collection.count_documents({})
+        return total_count
+
+    def delete_bookmarks_from_collection(self, collection_name, tweet_ids):
+        collection = self.get_collection(collection_name)
+        result = collection.delete_many({'id': {'$in': tweet_ids}})
+        print(f"Deleted {result.deleted_count} bookmarks from DB")
+        
         
 if __name__ == "__main__":
     mongo = MongoDB()
