@@ -1,20 +1,12 @@
 import requests
-from pprint import pprint
 import pandas as pd
 from termcolor import colored
 import logging
 logging.basicConfig(filename='bookmarks.log', level=logging.DEBUG)
 
 class Bookmarks():
-    def __init__(self, token, user_id) -> None:
-        self.token = token
-        self.user_id = user_id
-        # tm = Token_Manager()
-                
-        # # Unless refreshed, token only lasts for 2hrs
-        # self.token = tm.refresh_token()
-        # self.user_id = tm.get_userid(self.token) 
-    
+    def __init__(self) -> None:
+        pass
     
     def get_all_bookmarks(self, user_fields=None, media_fields=None, tweet_fields=None, expansions=None, limit=None, pagination_token=None):
         """
@@ -50,8 +42,7 @@ class Bookmarks():
         """
         
         bookmarks = []
-        count = limit        
-        
+        count = limit                
         print("")
         for i in range(1, 1000):  # Set upper bound to avoid infinite loop    
             response = self.get_bookmarks(user_fields=user_fields, media_fields=media_fields, tweet_fields=tweet_fields, expansions=expansions, limit=limit, pagination_token=pagination_token)
@@ -59,29 +50,24 @@ class Bookmarks():
             print()
             print(f"Fetched total of {colored(count, 'green')} bookmarks")
             logging.info(f"Fetched total of {colored(count, 'green')} bookmarks")
-            count += limit
-            
+            count += limit     
+                   
             if response.status_code != 200:
                 logging.error(f"Error retrieving bookmarks: {response_data['error']['message']}")
                 raise Exception(f"Error retrieving bookmarks: {response_data['error']['message']}")
-
+            
             if len(response_data["data"]) == 0:                
                 logging.info(f"Finished Fetching bookmarks!")
                 break  # If there are no more bookmarks, break the loop
             
-            
-            
             bookmark = self.process_bookmark_dict(response.json())
-            bookmarks.append(bookmark)
-                                    
+            bookmarks.append(bookmark)                                    
             
             if "next_token" in response_data.get("meta", {}):  # If there are more pages, get the next page
                 pagination_token = response_data.get("meta", {}).get("next_token")
             else:
-                break  # If there are no more pages, break the loop
-        
+                break  # If there are no more pages, break the loop        
         return bookmarks
-
     
     def get_bookmarks(self, user_fields=None, media_fields=None, tweet_fields=None, expansions=None, limit=2, pagination_token=None):        
         """
@@ -102,8 +88,6 @@ class Bookmarks():
         Raises:
         - None.
         """
-        
-        
         url = f"https://api.twitter.com/2/users/{self.user_id}/bookmarks"
         params = {"max_results": limit}
         params.update({'user.fields': ','.join(user_fields)} if user_fields else {})
@@ -118,7 +102,6 @@ class Bookmarks():
         # print(headers)
         # print(f"Requesting to {response.url} and {response.headers}")
         return response
-        
     
     def process_bookmark_dict(self, bookmark_dict):
         """
@@ -161,20 +144,20 @@ class Bookmarks():
                     tweet['url'] = f"https://twitter.com/{tweet['username']}/status/{tweet['id']}"
                     break
             tweets.append(tweet)
-
         df = pd.DataFrame(tweets)        
         return df
 
-    def start_fetching_bookmarks(self):
-        # bookmarks = Bookmarks()
+    def start_fetching_bookmarks(self, user_id, token):
+        self.token = token
+        self.user_id = user_id
         bookmarks = self.get_all_bookmarks(user_fields=["username"], tweet_fields=["author_id","created_at","public_metrics"], expansions=["author_id"], limit=100)        
         all_bookmarks = pd.concat(bookmarks, ignore_index=True)
         return all_bookmarks
     
-    def delete_bookmarks(self, tweet_id):
-        url = f"https://api.twitter.com/2/users/{self.user_id}/bookmarks/{tweet_id}"
+    def delete_bookmarks(self, user_id, token, tweet_id):
+        url = f"https://api.twitter.com/2/users/{user_id}/bookmarks/{tweet_id}"
         headers = {
-            "Authorization": f"Bearer {self.token['access_token']}",
+            "Authorization": f"Bearer {token['access_token']}",
         }
         response = send_request('DELETE', url, headers=headers)
         # print(headers)
@@ -201,3 +184,6 @@ def send_request(method, url, headers=None, params=None, json=None):
     req = requests.Request(method, url, headers=headers, params=params, json=json)
     prepped = req.prepare()
     return requests.Session().send(prepped)
+
+
+bookmark_manager = Bookmarks()
