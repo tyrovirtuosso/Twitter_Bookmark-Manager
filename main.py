@@ -1,38 +1,20 @@
-from mongo_db import MongoDB
-from config import db_name
-from token_manager import Token_Manager
-from fetcher import Fetcher
+from fetcher import fetcher
 
-import pandas as pd
-import csv
 from pprint import pprint
+import redis
 
-
-def refresh_token(token):
-    tm = Token_Manager(token)
-    token = tm.refresh_token()
-    return token
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
     
-
-
 if __name__ == "__main__":
-    user_id = '1327220079235239936'    
-    fetcher = Fetcher(user_id)
+    user_id = redis_client.get("user_id").decode()
         
-    # bookmarks = (fetcher.fetch_bookmarks_from_twitter())
-    # fetcher.save_to_collection(bookmarks)
+    bookmarks = fetcher.fetch_bookmarks_from_twitter(user_id)
+    fetcher.save_to_collection(bookmarks, collection_name='bookmarks_', user_id=user_id)
     
-    # df = fetcher.fetch_from_collection()
-    # df.to_csv('output.csv', index=False)    
-    # print(fetcher.collection_item_count())
-    # fetcher.delete_bookmarks(['6454f10df087e9e96d457a91'])
-    # print(fetcher.collection_item_count())
-    # PendulumFlow = df[df['username'] == 'PendulumFlow']
-    # PendulumFlow.to_csv('PendulumFlow.csv', index=False)    
-    # document = fetcher.fetch_specific_document_from_bookmarks(column='url', search='https://twitter.com/PendulumFlow/status/1421266423553224706')
-    
-    print(f"Total Bookmarks: {fetcher.collection_item_count()}")
-    df = fetcher.fetch_from_bookmark_collection()
+    df = fetcher.fetch_from_collection(user_id=user_id)
+    df.to_csv('output.csv', index=False)    
+    # fetcher.delete_bookmarks(user_id, ['1659287774791618562'])
+    print(f"Total Bookmarks: {fetcher.collection_item_count(user_id, collection_name='bookmarks_')}")
     most_occured_usernames = fetcher.get_most_occured_usernames(df) 
     print((most_occured_usernames))
     
@@ -43,12 +25,11 @@ if __name__ == "__main__":
         print()     
         pprint(tweet)
         
-    excluded_urls = ['']
-    filtered_df = filterd_df[~filterd_df['url'].isin(excluded_urls)]
+    # excluded_urls = ['']
+    # filtered_df = filterd_df[~filterd_df['url'].isin(excluded_urls)]
 
     id_list = filterd_df['id'].tolist()
-
-    fetcher.delete_bookmarks(id_list)
+    # fetcher.delete_bookmarks(id_list)
         
-    print(f"Total Bookmarks: {fetcher.collection_item_count()}")
+    print(f"Total Bookmarks: {fetcher.collection_item_count(user_id, collection_name='bookmarks_')}")
     

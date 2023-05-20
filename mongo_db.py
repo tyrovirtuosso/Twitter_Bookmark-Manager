@@ -1,5 +1,4 @@
 from pymongo import MongoClient
-from pymongo.errors import AutoReconnect
 import pandas as pd
 import pymongo
 from dotenv import load_dotenv
@@ -16,8 +15,7 @@ class MongoDB():
             self.client = MongoClient(cluster)
         else: 
             cluster = MONGODB_CLUSTER_LOCAL
-            self.client = MongoClient(cluster)
-        
+            self.client = MongoClient(cluster)        
         self.db = self.get_db(db_name=db_name)
                  
      
@@ -74,28 +72,28 @@ class MongoDB():
         df = pd.DataFrame(data)
         if db_name == 'Twitter':
             df['created_at'] = pd.to_datetime(df['created_at'])
-            # df = df.sort_values(by='created_at', ascending=False)
         return df
 
-    def save_to_collection(self, data, collection_name):
+    def save_to_collection(self, data, collection_name, user_id=None):
         collection = self.get_collection(collection_name)
-        data = data.to_dict('records') 
-        
         if 'bookmarks' in collection_name:
             try:
+                data = data.to_dict('records') 
                 collection.insert_many(data, ordered=False) # attempts to insert the Python dictionary objects in data into collection. If the insertion operation fails, the operation will carry on inserting any other documents that were valid.
-                print("Bookmarks added to MongoDB successfully.")
-                
+                print("Bookmarks added to MongoDB successfully.")                
             except pymongo.errors.BulkWriteError as e:
                 write_errors = e.details.get('writeErrors', [])
                 num_of_duplicates = len(write_errors)
                 print(f"\n{num_of_duplicates} Duplicates Found. Duplicate Bookmarks Not Added")
         
-        # for url in collection.distinct('url'):
-        #     result = collection.delete_many({'url': url})  # remove all but the first document with the same url
-        #     print(f"Deleted {result.deleted_count - 1} duplicates for url '{url}'")
-        
-                        
+        elif 'user_tokens' in collection_name:
+            if user_id is not None:
+                collection.create_index([('user_id', pymongo.ASCENDING)], unique=True)
+                collection.replace_one({"user_id": user_id}, data, upsert=True)
+                print("Token added successfully.")
+            else:
+                raise ValueError("user_id must be specified for user_tokens collection")
+
     def collection_item_count(self, collection_name):
         collection = self.get_collection(collection_name)
         total_count = collection.count_documents({})
@@ -105,7 +103,9 @@ class MongoDB():
         collection = self.get_collection(collection_name)
         result = collection.delete_many({'id': {'$in': tweet_ids}})
         print(f"Deleted {result.deleted_count} bookmarks from DB")
-        
+
+
+mongo = MongoDB()
         
 if __name__ == "__main__":
     mongo = MongoDB()

@@ -4,22 +4,23 @@ import os
 import re
 from requests_oauthlib import OAuth2Session
 from fastapi import FastAPI, Request, status
-from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+import redis
+
+
 import pickle
 import uvicorn
-import pymongo
-import urllib.parse
-
-
-from config import twitter_scopes, db_name
 from dotenv import load_dotenv
-from mongo_db import MongoDB
-from token_manager import Token_Manager
-from fetcher import Fetcher
-
 load_dotenv()
 
+from config import twitter_scopes
+from token_manager import tm
+from fetcher import fetcher
+
+
 app = FastAPI()
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+
 # Variables
 client_id = os.environ.get("CLIENT_ID")
 client_secret = os.environ.get("CLIENT_SECRET")
@@ -38,51 +39,14 @@ code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
 def make_token():
     return OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scopes)
 
-def add_user_token(token):
-    # Initialize DB
-    mongo = MongoDB()
-    db = mongo.get_db(db_name)
-    
-    # create user_tokens collection for adding tokens of users with user_id as index
-    user_tokens_collection = mongo.get_collection(db, 'user_tokens') 
-    tm = Token_Manager(token)
-    user_id = tm.get_userid(token)        
-    user_tokens_collection.create_index([('user_id', pymongo.ASCENDING)], unique=True)   
-            
-    new_token = {"user_id": user_id, "token": token}
-    user_tokens_collection.replace_one({"user_id": user_id}, new_token, upsert=True)
-    print("Token added successfully.")
-
-
-# @app.get("/welcome")
-# async def welcome(request: Request):
-#     token = request.cookies.get("token")
-#     token = urllib.parse.parse_qs(urllib.parse.unquote(token))
-#     token = {key: val[0] for key, val in token.items()}
-#     tm = Token_Manager(token)
-#     user_id = tm.get_userid(token)     
-    
-#     fetcher = Fetcher(token, user_id)  
-#     fetcher.fetch_bookmarks_from_twitter() 
-    
-#     async def generate():      
-#         yield "data: fetching\n\n"
-#         time.sleep(1)
-#         yield "data: still fetching\n\n"
-#         time.sleep(1)
-#         yield f"data: done fetching with token: {token} for {user_id} \n\n"
-
-#     return StreamingResponse(generate(), media_type="text/event-stream")
-
+def add_user_token(token, user_id):    
+    collection_name = 'user_tokens'
+    new_token_entry = {"user_id": user_id, "token": token}        
+    fetcher.save_to_collection(new_token_entry, collection_name, user_id=user_id)  
 
 @app.get("/welcome", response_class=HTMLResponse)
-async def welcome(request: Request):
-    token = request.cookies.get("token")
-    token = urllib.parse.parse_qs(urllib.parse.unquote(token))
-    token = {key: val[0] for key, val in token.items()}
-    tm = Token_Manager(token)
-    user_id = tm.get_userid(token)
-    
+async def welcome():
+    user_id = redis_client.get("user_id").decode()
     return f"""
         <html>
             <head>
@@ -115,26 +79,12 @@ async def welcome(request: Request):
     """
 
 
-
-
-
-
-
-
 @app.get("/fetch-bookmarks")
-async def fetch_bookmarks(request: Request):
-    token = request.cookies.get("token")
-    token = urllib.parse.parse_qs(urllib.parse.unquote(token))
-    token = {key: val[0] for key, val in token.items()}
-    tm = Token_Manager(token)
-    user_id = tm.get_userid(token)     
-    
-    fetcher = Fetcher(token, user_id)  
-    bookmarks = fetcher.fetch_bookmarks_from_twitter()
+def fetch_bookmarks(request: Request):    
+    user_id = redis_client.get("user_id").decode()
+    bookmarks = fetcher.fetch_bookmarks_from_twitter(user_id)
     bookmarks_json = bookmarks.to_dict(orient='records')
     return JSONResponse(content=bookmarks_json)
-
-
 
 @app.get("/")
 def root_fn():
@@ -144,13 +94,11 @@ def root_fn():
     code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
     code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
     code_challenge = code_challenge.replace("=", "")
-
     try:
         authorization_url, state = twitter.authorization_url(
             auth_url, code_challenge=code_challenge, code_challenge_method="S256"
         )
         return RedirectResponse(authorization_url, status_code=status.HTTP_302_FOUND)
-
     except Exception as e:
         print(f"Error occurred while attempting OAuth: {str(e)}")
         return JSONResponse(content={"message": "Internal Server Error"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -159,7 +107,6 @@ def root_fn():
 def callback(code: str, state: str, error: str = None):
     if error:
         return JSONResponse(content={"message": "Error, the OAuth request was denied by this user"}, status_code=status.HTTP_403_FORBIDDEN)
-    
     try:
         token = twitter.fetch_token(
             token_url=token_url,
@@ -167,18 +114,15 @@ def callback(code: str, state: str, error: str = None):
             code_verifier=code_verifier,
             code=code,
         )
+        user_id = tm.get_userid(token)       
+        add_user_token(token, user_id)
         
-        add_user_token(token)
-                
         # Serialize the dictionary to a binary pickle file
         with open("token.pickle", "wb") as f:
             pickle.dump(token, f)
             
-        query_params = urllib.parse.urlencode(token)
+        redis_client.set("user_id", user_id)
         response = RedirectResponse("/welcome", status_code=status.HTTP_302_FOUND)
-        response.set_cookie(key="token", value=query_params)
-        
-        # response = RedirectResponse(f"/welcome?{query_params}", status_code=status.HTTP_302_FOUND)
         return response
     
     except Exception as e:
@@ -186,4 +130,4 @@ def callback(code: str, state: str, error: str = None):
         return JSONResponse(content={"message": "Internal Server Error"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 if __name__ == "__main__":
-    uvicorn.run("oauth_twitter:app", host="127.0.0.1", port=5000, reload=True)
+    uvicorn.run("oauth_twitter:app", host="127.0.0.1", port=6000, reload=True)
