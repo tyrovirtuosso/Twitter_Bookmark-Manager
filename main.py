@@ -2,9 +2,22 @@ from fetcher import fetcher
 
 from pprint import pprint
 import redis
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
-    
+# Initialize variables
+REDIS_HOST = os.environ.get("REDIS_CLIENT")
+REDIS_PORT = os.environ.get("REDIS_PORT")
+REDIS_PASS = os.environ.get("REDIS_PASS")   
+
+# Initialize redis db for cache
+redis_client = redis.Redis(
+  host=REDIS_HOST,
+  port=REDIS_PORT,
+  password=REDIS_PASS)
+
+ 
 if __name__ == "__main__":
     user_id = redis_client.get("user_id").decode()
         
