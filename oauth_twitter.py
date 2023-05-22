@@ -6,8 +6,6 @@ from requests_oauthlib import OAuth2Session
 from fastapi import FastAPI, Request, status
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 import redis
-
-
 import pickle
 import uvicorn
 from dotenv import load_dotenv
@@ -18,15 +16,23 @@ from token_manager import tm
 from fetcher import fetcher
 
 
-app = FastAPI()
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
-
 # Variables
 client_id = os.environ.get("CLIENT_ID")
 client_secret = os.environ.get("CLIENT_SECRET")
 auth_url = "https://twitter.com/i/oauth2/authorize"
 token_url = "https://api.twitter.com/2/oauth2/token"
 redirect_uri = os.environ.get("REDIRECT_URI")
+
+REDIS_HOST = os.environ.get("REDIS_CLIENT")
+REDIS_PORT = os.environ.get("REDIS_PORT")
+REDIS_PASS = os.environ.get("REDIS_PASS")
+
+# Initialize app and redis for cache
+app = FastAPI()
+redis_client = redis.Redis(
+  host=REDIS_HOST,
+  port=REDIS_PORT,
+  password=REDIS_PASS)
 
 # Set the scopes
 scopes = twitter_scopes
